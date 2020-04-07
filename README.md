@@ -13,6 +13,9 @@ see [terms](terms.md) for additional information regarding terminology used in F
 
 `firecares`/`nfirs`/`parcels` should be connections defined in your [.pg_service.conf](https://www.postgresql.org/docs/9.0/static/libpq-pgservice.html), pointed at the respective databases.
 
+### Docker
+1. `docker-compose up`
+
 ### Python
 
 _We'd recommend creating a [virtualenv](https://virtualenv.pypa.io/en/stable/) to contain your python libraries specific to this project._
