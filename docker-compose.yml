@@ -1,0 +1,16 @@
+version: '3.7'
+
+services:
+  notebook:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - 0.0.0.0:8888:8888
+    environment:
+      - GRANT_SUDO=yes
+    user: root
+    volumes:
+      - $HOME/.pg_service.conf:/home/jovyan/.pg_service.conf
+      - $PWD/:/home/jovyan/work
+    command: ['start-notebook.sh', "--NotebookApp.token=''"]
