@@ -1,36 +1,39 @@
-/*
-
-# Create the dept_incidents intermediate table
-
-* Its purpose is to provide the data needed to correct for geolocation errors.
-* Note this view needs to be refreshed whenever new NFIRS data is added or
-  when records are geolocated. (REFRESH MATERIALIZED VIEW nist.dept_incidents;)
-
-
-*/
-CREATE MATERIALIZED VIEW public.dept_incidents2 AS 
+CREATE MATERIALIZED VIEW nist.dept_incidents
+AS
  WITH t0 AS (
          SELECT b.state,
             b.fdid,
-            b.inc_date % 10000 AS year,
+            date_part('year'::text, b.inc_date) AS year,
                 CASE
                     WHEN a.geom IS NOT NULL THEN 1
                     ELSE 0
                 END AS located,
                 CASE
-                    WHEN b.inc_type ~~ '1%'::text OR f.state IS NOT NULL THEN 1
+                    WHEN "substring"(b.inc_type::text, 1, 1) = '1'::text OR f.state IS NOT NULL THEN 1
                     ELSE 0
                 END AS fire,
+                CASE
+                    WHEN "substring"(b.inc_type::text, 1, 1) = '3'::text THEN 1
+                    ELSE 0
+                END AS ems,
+                CASE
+                    WHEN "substring"(b.inc_type::text, 1, 1) = ANY (ARRAY['2'::text, '4'::text, '8'::text]) THEN 1
+                    ELSE 0
+                END AS hazard,
+                CASE
+                    WHEN "substring"(b.inc_type::text, 1, 1) = ANY (ARRAY['5'::text, '6'::text, '7'::text, '9'::text]) THEN 1
+                    ELSE 0
+                END AS svc,
                 CASE
                     WHEN b.version::numeric(4,1) = 5.0::numeric(4,1) THEN 1
                     ELSE 0
                 END AS version5,
                 CASE
-                    WHEN b.aid = ANY (ARRAY['3'::text, '4'::text]) THEN 0
+                    WHEN b.aid::text = ANY (ARRAY['3'::text, '4'::text]) THEN 0
                     ELSE 1
                 END AS aid,
                 CASE
-                    WHEN ((b.inc_date % 10000) > 2001 AND (b.inc_type = ANY (ARRAY['111'::text, '120'::text, '121'::text, '122'::text, '123'::text])) OR (b.inc_date % 10000) > 2001 AND (b.inc_date % 10000) < 2008 AND b.inc_type = '112'::text) AND (f.struc_type = ANY (ARRAY['1'::text, '2'::text])) OR ((b.inc_type = ANY (ARRAY['113'::text, '114'::text, '115'::text, '116'::text, '117'::text, '118'::text])) OR b.inc_type = '110'::text AND (b.inc_date % 10000) < 2009) AND ((f.struc_type = ANY (ARRAY['1'::text, '2'::text])) OR f.struc_type IS NULL) THEN 1
+                    WHEN (date_part('year'::text, b.inc_date) > 2001::double precision AND (b.inc_type::text = ANY (ARRAY['111'::text, '120'::text, '121'::text, '122'::text, '123'::text])) OR date_part('year'::text, b.inc_date) > 2001::double precision AND date_part('year'::text, b.inc_date) < 2008::double precision AND b.inc_type::text = '112'::text) AND (f.struc_type::text = ANY (ARRAY['1'::text, '2'::text])) OR ((b.inc_type::text = ANY (ARRAY['113'::text, '114'::text, '115'::text, '116'::text, '117'::text, '118'::text])) OR b.inc_type::text = '110'::text AND date_part('year'::text, b.inc_date) < 2009::double precision) AND ((f.struc_type::text = ANY (ARRAY['1'::text, '2'::text])) OR f.struc_type IS NULL) THEN 1
                     ELSE 0
                 END AS struc,
                 CASE
@@ -38,11 +41,11 @@ CREATE MATERIALIZED VIEW public.dept_incidents2 AS
                     ELSE 0
                 END AS module,
                 CASE
-                    WHEN f.not_res = 'N'::text OR b.prop_use ~~ '4%'::text THEN 1
+                    WHEN f.not_res::text = 'N'::text OR b.prop_use::text ~~ '4%'::text THEN 1
                     ELSE 0
                 END AS res,
                 CASE
-                    WHEN b.prop_use = '419'::text OR b.prop_use ~~ '9%'::text THEN 1
+                    WHEN b.prop_use::text = '419'::text OR b.prop_use::text ~~ '9%'::text THEN 1
                     ELSE 0
                 END AS lr,
             b.ff_inj,
@@ -50,8 +53,8 @@ CREATE MATERIALIZED VIEW public.dept_incidents2 AS
             b.ff_death,
             b.oth_death
            FROM basicincident b
-             LEFT JOIN incidentaddress a USING ( state, fdid, inc_date, inc_no, exp_no)
-             LEFT JOIN fireincident f USING ( state, fdid, inc_date, inc_no, exp_no)
+             LEFT JOIN incidentaddress a USING (state, fdid, inc_date, inc_no, exp_no)
+             LEFT JOIN fireincident f USING (state, fdid, inc_date, inc_no, exp_no)
         ), t AS (
          SELECT t0.state,
             t0.fdid,
@@ -62,6 +65,12 @@ CREATE MATERIALIZED VIEW public.dept_incidents2 AS
             sum(t0.aid * t0.version5 * t0.located) AS v5_incidents_loc,
             sum(t0.aid * t0.fire) AS fires,
             sum(t0.aid * t0.located * t0.fire) AS fires_loc,
+            sum(t0.aid * t0.ems) AS ems,
+            sum(t0.aid * t0.located * t0.ems) AS ems_loc,
+            sum(t0.aid * t0.hazard) AS hazard,
+            sum(t0.aid * t0.located * t0.hazard) AS hazard_loc,
+            sum(t0.aid * t0.svc) AS svc,
+            sum(t0.aid * t0.located * t0.svc) AS svc_loc,
             sum(t0.aid * t0.module) AS mod_fires,
             sum(t0.aid * t0.located * t0.module) AS mod_fires_loc,
             sum(t0.aid * t0.struc) AS struc_fires,
@@ -76,65 +85,58 @@ CREATE MATERIALIZED VIEW public.dept_incidents2 AS
             sum(t0.located * (t0.ff_death + t0.oth_death * t0.aid)) AS deaths_loc
            FROM t0
           GROUP BY t0.state, t0.fdid, t0.year
-        ), e_l AS (
-		 SELECT 
-           state, 
-		   fdid, 
-		   inc_date,
-		   inc_no, 
-		   exp_no, 
-		   addr_type
-         FROM ems12_geocode
-		 UNION
-		 SELECT 
-           state, 
-		   fdid, 
-		   inc_date,
-		   inc_no, 
-		   exp_no, 
-		   addr_type
-		 FROM ems13_geocode
-		 UNION
-		 SELECT 
-           state, 
-		   fdid, 
-		   inc_date,
-		   inc_no, 
-		   exp_no, 
-		   addr_type
-		 FROM ems14_geocode
-		 UNION
-		 SELECT 
-           state, 
-		   fdid, 
-		   inc_date,
-		   inc_no, 
-		   exp_no, 
-		   addr_type
-		 FROM ems15_geocode
-		), e AS (
+        ), e AS (
          SELECT ems.state,
             ems.fdid,
-            "substring"(ems.inc_date, 5, 4)::integer AS year,
-            count(*) AS calls,
+            date_part('year'::text, ems.inc_date) AS year,
             sum(
                 CASE
-                    WHEN e_l.addr_type IN ('PointAddress', 'StreetAddress', 'StreetInd') THEN 1
+                    WHEN "substring"(ems.inc_type::text, 1, 1) = '1'::text THEN 1
                     ELSE 0
-                END) AS calls_loc_s,
+                END) AS fire_calls,
             sum(
                 CASE
-                    WHEN e_l.addr_type IN ('PointAddress', 'StreetAddress', 'StreetInd', 'StreetName') THEN 1
+                    WHEN "substring"(ems.inc_type::text, 1, 1) = '1'::text AND e_l.geom IS NOT NULL THEN 1
                     ELSE 0
-                END) AS calls_loc_m,
+                END) AS fire_calls_loc,
             sum(
                 CASE
-                    WHEN e_l.addr_type IN ('PointAddress', 'StreetAddress', 'StreetInd', 'StreetName', 'Postal') THEN 1
+                    WHEN "substring"(ems.inc_type::text, 1, 1) = '3'::text THEN 1
                     ELSE 0
-                END) AS calls_loc_l
-           FROM ems.basicincident ems LEFT JOIN e_l USING (state, fdid, inc_date, inc_no, exp_no)
-		   WHERE ems.inc_type LIKE '4%'
-          GROUP BY ems.state, ems.fdid, ("substring"(ems.inc_date, 5, 4)::integer)
+                END) AS ems_calls,
+            sum(
+                CASE
+                    WHEN "substring"(ems.inc_type::text, 1, 1) = '3'::text AND e_l.geom IS NOT NULL THEN 1
+                    ELSE 0
+                END) AS ems_calls_loc,
+            sum(
+                CASE
+                    WHEN "substring"(ems.inc_type::text, 1, 1) = ANY (ARRAY['2'::text, '4'::text, '8'::text]) THEN 1
+                    ELSE 0
+                END) AS hazard_calls,
+            sum(
+                CASE
+                    WHEN ("substring"(ems.inc_type::text, 1, 1) = ANY (ARRAY['2'::text, '4'::text, '8'::text])) AND e_l.geom IS NOT NULL THEN 1
+                    ELSE 0
+                END) AS hazard_calls_loc,
+            sum(
+                CASE
+                    WHEN "substring"(ems.inc_type::text, 1, 1) = ANY (ARRAY['5'::text, '6'::text, '7'::text, '9'::text]) THEN 1
+                    ELSE 0
+                END) AS svc_calls,
+            sum(
+                CASE
+                    WHEN ("substring"(ems.inc_type::text, 1, 1) = ANY (ARRAY['5'::text, '6'::text, '7'::text, '9'::text])) AND e_l.geom IS NOT NULL THEN 1
+                    ELSE 0
+                END) AS svc_calls_loc,
+            sum(
+                CASE
+                    WHEN e_l.geom IS NULL THEN 0
+                    ELSE 1
+                END) AS calls_loc
+           FROM ems.basicincident ems
+             LEFT JOIN ems.incidentaddress e_l USING (state, fdid, inc_date, inc_no, exp_no)
+          GROUP BY ems.state, ems.fdid, (date_part('year'::text, ems.inc_date))
         )
  SELECT
         CASE
@@ -155,6 +157,12 @@ CREATE MATERIALIZED VIEW public.dept_incidents2 AS
     t.v5_incidents_loc,
     t.fires,
     t.fires_loc,
+    t.ems,
+    t.ems_loc,
+    t.hazard,
+    t.hazard_loc,
+    t.svc,
+    t.svc_loc,
     t.mod_fires,
     t.mod_fires_loc,
     t.struc_fires,
@@ -167,29 +175,35 @@ CREATE MATERIALIZED VIEW public.dept_incidents2 AS
     t.injuries_loc,
     t.deaths,
     t.deaths_loc,
-    e.calls,
-    e.calls_loc_s,
-    e.calls_loc_m,
-    e.calls_loc_l
+    e.fire_calls,
+    e.fire_calls_loc,
+    e.ems_calls,
+    e.ems_calls_loc,
+    e.hazard_calls,
+    e.hazard_calls_loc,
+    e.svc_calls,
+    e.svc_calls_loc
    FROM t
-     FULL JOIN e ON t.state = e.state AND t.fdid = e.fdid AND t.year = e.year;
+     FULL JOIN e ON t.state::text = e.state::text AND ltrim(t.fdid::text, '0'::text) = ltrim(e.fdid::text, '0'::text) AND t.year = e.year
+WITH DATA;
 
---ALTER TABLE nist.dept_incidents2
---  OWNER TO firecares;
-GRANT ALL ON TABLE nist.dept_incidents TO sgilbert;
-GRANT SELECT ON TABLE nist.dept_incidents TO firecares;
+ALTER TABLE nist.dept_incidents
+    OWNER TO sgilbert;
+
 COMMENT ON MATERIALIZED VIEW nist.dept_incidents
-  IS 'Its purpose is to provide the data needed to correct for geolocation errors.
+    IS 'Its purpose is to provide the data needed to correct for geolocation errors.
 Note this view needs to be refreshed whenever new NFIRS data is added or when records 
 are geolocated. (REFRESH MATERIALIZED VIEW nist.dept_incidents;)
 
-This version incorporates ems calls. For now, the geolocations for ems calls are split
-between multiple tables. Thus, I build the e_l subquery which UNIONs those tables.
+This version incorporates information breaking down the types of calls.
 
-I suspect (but dont know) that the 2014 and 2015 geolocated tables are overlapping. Since
-the UNION term only returns DISTINCT rows, I dont have to worry about it here.
+Here INCIDENTS screen out mutual aid calls while CALLS includes them. 
+
+The field CALLS in the previous version is now called EMS_CALLS. 
 
 This query, as written, will take a long time to run.
 
-When this query is finalized, the clause altering ownership will need to be uncommented.';
+Eventually, I want this version of this table to replace the earlier versions.';
 
+GRANT ALL ON TABLE nist.dept_incidents TO firecares;
+GRANT ALL ON TABLE nist.dept_incidents TO sgilbert;

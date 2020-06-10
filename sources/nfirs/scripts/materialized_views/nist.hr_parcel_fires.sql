@@ -1,6 +1,6 @@
 CREATE MATERIALIZED VIEW nist.hr_parcel_fires AS 
  WITH y AS (
-         SELECT generate_series(2007, 2019) AS year
+         SELECT generate_series(2007, date_part('year'::text, now())::integer + 1) AS year
         ), p0 AS (
          SELECT y.year,
             h.parcel_id,
@@ -103,9 +103,10 @@ CREATE MATERIALIZED VIEW nist.hr_parcel_fires AS
 WITH DATA;
 
 ALTER TABLE nist.hr_parcel_fires
-  OWNER TO sgilbert;
+    OWNER TO sgilbert;
+
+GRANT ALL ON TABLE nist.hr_parcel_fires TO firecares;
 GRANT ALL ON TABLE nist.hr_parcel_fires TO sgilbert;
-GRANT SELECT ON TABLE nist.hr_parcel_fires TO firecares;
 COMMENT ON MATERIALIZED VIEW nist.hr_parcel_fires
   IS 'Columns are defined as:
     year             integer,

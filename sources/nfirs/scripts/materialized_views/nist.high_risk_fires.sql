@@ -119,25 +119,29 @@ CREATE MATERIALIZED VIEW nist.high_risk_fires AS
     sm.adult_smoke AS smoke_st,
     sc.smoking_pct AS smoke_cty
    FROM f
-     LEFT JOIN nist.tract_years_2 t ON f.year = t.year AND f.geoid = t.tr10_fid
+     LEFT JOIN nist.tract_years t ON f.year = t.year AND f.geoid = t.tr10_fid
      LEFT JOIN d ON t.year::double precision = d.year AND t.fc_dept_id = d.fd_id
-     LEFT JOIN nist.svi2010 svi ON f.geoid = ('14000US'::text || lpad(svi.fips::text, 11, '0'))
+     LEFT JOIN nist.svi2010 svi ON f.geoid = ('14000US'::text || lpad(svi.fips::text, 11, '0'::text))
      LEFT JOIN nist.acs_est_new acs ON f.geoid = acs.geoid AND
-    CASE
-      WHEN tr.year < 2008 THEN 2008
-      WHEN tr.year > (select max(year) from nist.acs_est_new) - 2 THEN (select max(year) from nist.acs_est_new) - 2
-      ELSE tr.year
-    END::double precision = (acs.year - 2::double precision)
+        CASE
+            WHEN f.year < 2008 THEN 2008::double precision
+            WHEN f.year::double precision > ((( SELECT max(acs_est_new.year) AS max
+               FROM nist.acs_est_new)) - 2::double precision) THEN (( SELECT max(acs_est_new.year) AS max
+               FROM nist.acs_est_new)) - 2::double precision
+            ELSE f.year::double precision
+        END = (acs.year - 2::double precision)
      LEFT JOIN nist.sins sm ON t.state::text = sm.postal_code AND sm.year = 2010
      LEFT JOIN nist.sins_county sc ON "substring"(f.geoid, 8, 5) = sc.fips
 WITH DATA;
 
 ALTER TABLE nist.high_risk_fires
-  OWNER TO sgilbert;
-GRANT ALL ON TABLE nist.high_risk_fires TO sgilbert;
-GRANT SELECT ON TABLE nist.high_risk_fires TO firecares;
+    OWNER TO sgilbert;
+
 COMMENT ON MATERIALIZED VIEW nist.high_risk_fires
-  IS 'This summarized the fire information for each high-risk parcel by year. It also
+    IS 'This summarized the fire information for each high-risk parcel by year. It also
 includes data that will be used to estimate the model. Data is from NFIRS 
 (indirectly through dept_incidents), the ACS, CoreLogic, and several other 
 sources.';
+
+GRANT ALL ON TABLE nist.high_risk_fires TO firecares;
+GRANT ALL ON TABLE nist.high_risk_fires TO sgilbert;

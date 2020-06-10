@@ -33,7 +33,7 @@ CREATE MATERIALIZED VIEW nist.med_risk_fires AS
                     WHEN cf.struc = 'Y'::text AND cf.risk = 'Med Risk'::text AND cf.geoid IS NOT NULL THEN cf.ff_death + cf.oth_death
                     ELSE 0
                 END) AS deaths
-           FROM nist.coded_fires2 cf
+           FROM nist.coded_fires cf
           WHERE cf.year > 2006::double precision AND cf.version = 5.0 AND NOT (cf.inc_type::text = '112'::text AND cf.year > 2007::double precision)
           GROUP BY cf.year, cf.geoid
         ), d AS (
@@ -123,16 +123,18 @@ CREATE MATERIALIZED VIEW nist.med_risk_fires AS
     acs."B12001_007" AS nilf,
     sm.adult_smoke AS smoke_st,
     sc.smoking_pct AS smoke_cty
-   FROM nist.tract_years_2 tr
+   FROM nist.tract_years tr
      LEFT JOIN f ON tr.tr10_fid = f.geoid AND tr.year::double precision = f.year
      LEFT JOIN d ON tr.fc_dept_id = d.fd_id AND tr.year::double precision = d.year
-     LEFT JOIN nist.svi2010 svi ON tr.tr10_fid = ('14000US'::text || lpad(svi.fips::text, 11, '0'))
+     LEFT JOIN nist.svi2010 svi ON tr.tr10_fid = ('14000US'::text || lpad(svi.fips::text, 11, '0'::text))
      LEFT JOIN nist.acs_est_new acs ON tr.tr10_fid = acs.geoid AND
-       CASE
-         WHEN tr.year < 2008 THEN 2008
-         WHEN tr.year > (select max(year) from nist.acs_est_new) - 2 THEN (select max(year) from nist.acs_est_new) - 2
-         ELSE tr.year
-       END::double precision = (acs.year - 2::double precision)
+        CASE
+            WHEN tr.year < 2008 THEN 2008::double precision
+            WHEN tr.year::double precision > ((( SELECT max(acs_est_new.year) AS max
+               FROM nist.acs_est_new)) - 2::double precision) THEN (( SELECT max(acs_est_new.year) AS max
+               FROM nist.acs_est_new)) - 2::double precision
+            ELSE tr.year::double precision
+        END = (acs.year - 2::double precision)
      LEFT JOIN nist.sins sm ON tr.state::text = sm.postal_code AND sm.year = 2010
      LEFT JOIN nist.sins_county sc ON "substring"(tr.tr10_fid, 8, 5) = sc.fips
      LEFT JOIN c ON tr.tr10_fid = c.geoid AND tr.year::double precision = c.year
@@ -141,14 +143,16 @@ CREATE MATERIALIZED VIEW nist.med_risk_fires AS
 WITH DATA;
 
 ALTER TABLE nist.med_risk_fires
-  OWNER TO sgilbert;
-GRANT ALL ON TABLE nist.med_risk_fires TO sgilbert;
-GRANT SELECT ON TABLE nist.med_risk_fires TO firecares;
+    OWNER TO sgilbert;
+
 COMMENT ON MATERIALIZED VIEW nist.med_risk_fires
-  IS 'This summarizes the fire information for medium risk fires by tract and year. 
+    IS 'This summarizes the fire information for medium risk fires by tract and year. 
 It also includes data that will be used to estimate the model. Data is from 
 NFIRS (indirectly through dept_incidents), the ACS, CoreLogic, and several other 
 sources.
 
 Note that I am experimenting with specifications that almost completely
 eliminate the hard-coded dates that have been included up to this point.';
+
+GRANT ALL ON TABLE nist.med_risk_fires TO firecares;
+GRANT ALL ON TABLE nist.med_risk_fires TO sgilbert;

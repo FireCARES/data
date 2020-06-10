@@ -70,22 +70,23 @@ CREATE MATERIALIZED VIEW nist.hr_pred AS
     sc.smoking_pct AS smoke_cty
    FROM f
      LEFT JOIN nist.tract_years t ON f.geoid = t.tr10_fid
-     LEFT JOIN firestation_firedepartment g ON t.state::text = g.state::text AND t.fdid::text = g.fdid::text
-     LEFT JOIN nist.svi2010 svi ON f.geoid = ('14000US'::text || lpad(svi.fips::text, 11, '0'))
-     LEFT JOIN nist.acs_est_new acs ON f.geoid = acs.geoid AND acs.year = (SELECT max(year) FROM nist.acs_est_new)
+     LEFT JOIN firestation_firedepartment g ON t.state::text = g.state::text AND t.fdid = g.fdid::text
+     LEFT JOIN nist.svi2010 svi ON f.geoid = ('14000US'::text || lpad(svi.fips::text, 11, '0'::text))
+     LEFT JOIN nist.acs_est_new acs ON f.geoid = acs.geoid AND acs.year = (( SELECT max(a2.year) AS max
+           FROM nist.acs_est_new a2))
      LEFT JOIN nist.sins sm ON t.state::text = sm.postal_code AND sm.year = 2010
      LEFT JOIN nist.sins_county sc ON "substring"(f.geoid, 8, 5) = sc.fips
-  WHERE t.year = 2016
+  WHERE t.year = (( SELECT max(t2.year) AS max
+           FROM nist.tract_years t2
+          WHERE t2.fdid IS NOT NULL))
 WITH DATA;
 
 ALTER TABLE nist.hr_pred
-  OWNER TO sgilbert;
-GRANT ALL ON TABLE nist.hr_pred TO sgilbert;
-GRANT SELECT ON TABLE nist.hr_pred TO firecares;
-COMMENT ON MATERIALIZED VIEW nist.hr_pred
-  IS 'This collects all the data needed to predict the number of fires etc. for high
-risk fires. There is (or should be) one entry per high-risk parcel. 
+    OWNER TO sgilbert;
 
-The main issue with this query is the use of hard-coded dates in a couple of
-places in the JOIN clauses. As currently written, they will have to be updated 
-periodically to keep the query up to date.';
+COMMENT ON MATERIALIZED VIEW nist.hr_pred
+    IS 'This collects all the data needed to predict the number of fires etc. for high
+risk fires. There is (or should be) one entry per high-risk parcel.';
+
+GRANT ALL ON TABLE nist.hr_pred TO firecares;
+GRANT ALL ON TABLE nist.hr_pred TO sgilbert;
