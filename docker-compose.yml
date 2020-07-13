@@ -2,6 +2,7 @@ version: '3.7'
 
 services:
   notebook:
+    image: data_notebook
     build:
       context: .
       dockerfile: ./Dockerfile
