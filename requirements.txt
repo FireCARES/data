@@ -7,7 +7,7 @@ numpy
 pandas==0.25.3
 pretty==0.1
 psycopg2==2.8.4
-scipy==1.4.1
+scipy==1.10.0
 sh==1.12.14
 Shapely==1.7.0
 tabulate==0.8.7
